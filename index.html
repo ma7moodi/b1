@@ -1,0 +1,147 @@
+
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>Best Goal</title>
+  
+  <script src="https://content.jwplatform.com/libraries/Z79JsmAO.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.7.1/showdown.min.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+  <script src="https://developer-tools.jwplayer.com/js/tools.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    .jwplayer { position: relative; width: 100%; height: 100%; }
+    .jwplayer .jw-media video { width: 100%; height: 100%; object-fit: fill; }
+    #resizeButton { position: absolute; top: 20px; left: 20px; background-color: rgba(0,0,0,0.6); color: white; border: none; padding: 10px 15px; font-size: 16px; cursor: pointer; border-radius: 5px; z-index: 9999; }
+    #resizeButton:hover { background-color: rgba(0,0,0,0.8); }
+    
+    /* تصميم إشعار التليجرام */
+    #telegramNotification {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      background-color: #0088cc;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: 0px 4px 6px rgba(0,0,0,0.1);
+      transition: all 0.3s ease-in-out;
+    }
+    #telegramNotification:hover {
+      background-color: #0077b5;
+    }
+    #telegramNotification i {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <button id="resizeButton">
+    <i class="fas fa-compress"></i>
+  </button>
+  <div id="my-jwplayer"></div>
+  
+  <!-- إشعار تليجرام -->
+  <div id="telegramNotification" onclick="window.open('https://t.me/yallakoora24', '_blank');">
+    <i class="fab fa-telegram-plane"></i>
+    اشترك في قناة التليجرام  
+  </div>
+  
+  <script>
+    async function fetchStreamUrl(url, selector) {
+      try {
+        const response = await fetch(url);
+        if (selector === 'json') {
+          const data = await response.json();
+          return data.stream_url; // استخراج رابط البث من الـ JSON
+        } else {
+          const text = await response.text();
+          const match = text.match(new RegExp(`${selector}\\s*["']([^"']+)["']`));
+          return match ? match[1] : null;
+        }
+      } catch (error) {
+        console.error('فشل في جلب رابط البث:', error);
+        return null;
+      }
+    }
+
+    async function setupPlayer() {
+      const urls = [
+        { url: 'https://mejarserver.site/bein1.php', selector: 'file:' },
+        { url: 'https://get.bassamnetflix2.workers.dev/TOD/WEB/BEIN/api.php?id=1', selector: 'json' },
+        { url: 'https://akomov.com/tod/todapp.php?id=1', selector: 'file:' }
+      ];
+
+      let loaded = false;
+
+      for (let i = 0; i < urls.length; i++) {
+        const { url, selector } = urls[i];
+        const streamUrl = await fetchStreamUrl(url, selector);
+
+        if (streamUrl) {
+          try {
+            jwplayer("my-jwplayer").setup({
+              file: streamUrl, // استخدام رابط البث الذي تم جلبها
+              width: "100%",
+              height: "100%",
+              autostart: true,
+              drm: {
+                clearkey: {
+                  keyId: "39471a4508f1387d96867b6e8ffa1e39",
+                  key: "ddd1fa7cd620953469679dca5bc19e54"
+                }
+              },
+              skin: {
+                name: "seven",
+                active: "#cc0202",
+                inactive: "#7f8c8d",
+                background: "#1e1e1e"
+              }
+            });
+
+            console.log(`تم تحميل الفيديو بنجاح من الرابط ${i + 1}`);
+            loaded = true;
+            break; // توقف إذا تم تحميل الفيديو بنجاح
+          } catch (error) {
+            console.error(`فشل تحميل الفيديو من الرابط ${i + 1}:`, error);
+          }
+        }
+      }
+
+      if (!loaded) {
+        console.error('لم يتم العثور على رابط بث صالح.');
+      }
+    }
+
+    window.onload = function() {
+      setupPlayer();
+      const videoElement = document.querySelector('.jwplayer .jw-media video');
+      if (videoElement) {
+        videoElement.style.objectFit = 'fit';
+      }
+    };
+
+    let isZoomed = false;
+    document.getElementById('resizeButton').addEventListener('click', function() {
+      const videoElement = document.querySelector('.jwplayer .jw-media video');
+      if (videoElement) {
+        if (!isZoomed) {
+          videoElement.style.objectFit = 'contain';
+          document.querySelector('#resizeButton i').className = 'fas fa-expand';
+        } else {
+          videoElement.style.objectFit = 'fit';
+          document.querySelector('#resizeButton i').className = 'fas fa-compress';
+        }
+        isZoomed = !isZoomed;
+      }
+    });
+  </script>
+</body>
+</html>
