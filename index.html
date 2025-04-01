@@ -1,147 +1,239 @@
-
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <title>Best Goal</title>
-  
-  <script src="https://content.jwplatform.com/libraries/Z79JsmAO.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.7.1/showdown.min.js"></script>
-  <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-  <script src="https://developer-tools.jwplayer.com/js/tools.min.js"></script>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-    .jwplayer { position: relative; width: 100%; height: 100%; }
-    .jwplayer .jw-media video { width: 100%; height: 100%; object-fit: fill; }
-    #resizeButton { position: absolute; top: 20px; left: 20px; background-color: rgba(0,0,0,0.6); color: white; border: none; padding: 10px 15px; font-size: 16px; cursor: pointer; border-radius: 5px; z-index: 9999; }
-    #resizeButton:hover { background-color: rgba(0,0,0,0.8); }
-    
-    /* تصميم إشعار التليجرام */
-    #telegramNotification {
-      position: fixed;
-      bottom: 70px;
-      right: 20px;
-      background-color: #0088cc;
-      color: white;
-      padding: 10px 15px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      font-size: 16px;
-      cursor: pointer;
-      box-shadow: 0px 4px 6px rgba(0,0,0,0.1);
-      transition: all 0.3s ease-in-out;
-    }
-    #telegramNotification:hover {
-      background-color: #0077b5;
-    }
-    #telegramNotification i {
-      margin-right: 10px;
-    }
-  </style>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Alwazir TV</title>
+   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.1/shaka-player.compiled.js"></script>
+   <script src="//content.jwplatform.com/libraries/SAHhwvZq.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+
+   <script>
+      document.addEventListener("DOMContentLoaded", function () {
+         jwplayer.key = 'ITWMv7t88JGzI0xPwW8I0+LveiXX9SWbfdmt0ArUSyc=';
+         const channelId = "spo-hd-13";
+         let streamUrl = "";
+         let drmKeys = {};
+
+         // جلب رابط البث من الصفحة المحددة
+         function fetchStreamUrl() {
+            return new Promise((resolve, reject) => {
+               $.ajax({
+                  url: `https://ibn-alsarma.live/ma/tdn.php?channel=${channelId}`,
+                  type: "GET",
+                  dataType: "text",
+                  success: function(data) {
+                     try {
+                        // استخراج الرابط باستخدام تعبير منتظم أكثر دقة
+                        const urlMatch = data.match(/https:\/\/todtv-live-spo-prod\.akamaized\.net\/Content\/Channel\/svc-[^'"]+/);
+                        if (urlMatch && urlMatch[0]) {
+                           // إصلاح الرابط إذا كان ناقصاً
+                           let fullUrl = urlMatch[0];
+                           if (!fullUrl.includes('playlist.mpd')) {
+                              fullUrl = fullUrl.replace(/\/DASH\/[^?]*/, '/DASH/playlist.mpd');
+                           }
+                           // إضافة المعلمات إذا كانت ناقصة
+                           if (!fullUrl.includes('start=')) {
+                              const timestamp = Math.floor(Date.now() / 1000);
+                              fullUrl += `?start=${timestamp}000&end=${timestamp + 7200}000`;
+                           }
+                           // التحقق من صحة الرابط النهائي
+                           if (!isValidUrl(fullUrl)) {
+                              throw new Error("رابط البث غير صالح");
+                           }
+                           streamUrl = fullUrl;
+                           resolve(streamUrl);
+                        } else {
+                           throw new Error("لم يتم العثور على رابط البث في الصفحة");
+                        }
+                     } catch (e) {
+                        reject(e.message);
+                     }
+                  },
+                  error: function(xhr, status, error) {
+                     reject("خطأ في جلب رابط البث: " + error);
+                  }
+               });
+            });
+         }
+
+         // دالة للتحقق من صحة الرابط
+         function isValidUrl(url) {
+            try {
+               new URL(url);
+               return url.includes('playlist.mpd') && 
+                      url.includes('akamaized.net') && 
+                      url.includes('svc-'+channelId);
+            } catch {
+               return false;
+            }
+         }
+
+         // جلب مفاتيح DRM من ملف chkeys.php
+         function fetchDrmKeys() {
+            return new Promise((resolve, reject) => {
+               $.ajax({
+                  url: "https://ibn-alsarma.live/ma/chkeys.php",
+                  type: "GET",
+                  dataType: "json",
+                  success: function(data) {
+                     try {
+                        if (data.channels && data.channels.length > 0) {
+                           // تصفية المفاتيح الخاصة بالقناة المطلوبة
+                           const channelKeys = data.channels.filter(
+                              ch => ch.id.includes(channelId) || ch.tv_name.includes(channelId)
+                           );
+                           
+                           if (channelKeys.length > 0) {
+                              // إنشاء كائن مفاتيح DRM بالشكل المطلوب
+                              drmKeys = {};
+                              channelKeys.forEach((keyObj, index) => {
+                                 const [keyId, key] = keyObj.key.split(":");
+                                 if (keyId && key) {
+                                    drmKeys[keyId] = key;
+                                 }
+                              });
+                              
+                              if (Object.keys(drmKeys).length > 0) {
+                                 resolve(drmKeys);
+                              } else {
+                                 throw new Error("المفاتيح غير صالحة");
+                              }
+                           } else {
+                              throw new Error("لا توجد مفاتيح لهذه القناة");
+                           }
+                        } else {
+                           throw new Error("بيانات المفاتيح غير صالحة");
+                        }
+                     } catch (e) {
+                        reject(e.message);
+                     }
+                  },
+                  error: function(xhr, status, error) {
+                     reject("خطأ في جلب مفاتيح DRM: " + error);
+                  }
+               });
+            });
+         }
+
+         // إعداد مشغل JWPlayer
+         function setupJWPlayer() {
+            try {
+               var playerInstance = jwplayer("player");
+               
+               // التحقق من وجود البيانات المطلوبة
+               if (!streamUrl || !drmKeys || Object.keys(drmKeys).length === 0) {
+                  throw new Error("بيانات التشغيل غير كاملة");
+               }
+               
+               playerInstance.setup({
+                  width: "100%",
+                  height: "100%",
+                  controls: true,
+                  stretching: "uniform",
+                  autostart: true,
+                  mute: false,
+                  volume: 50,
+                  horizontalVolumeSlider: true,
+                  playbackRateControls: true, 
+                  playbackRates: [0.5, 1, 1.25, 1.5, 2],
+                  logo: {
+                     file: "https://i.postimg.cc/YCcXxBWS/logo2.png",
+                     link: "https://t.me/alwazirtv",
+                     hide: false,
+                     position: "bottom-left",
+                     margin: 20
+                  },
+                  aspectratio: "16:9",
+                  playlist: [{
+                     sources: [{
+                        file: streamUrl,
+                        type: "dash",
+                        drm: {
+                           clearkey: {
+                              keys: drmKeys
+                           }
+                        },
+                        label: "HD"
+                     }]
+                  }]
+               });
+
+               playerInstance.on("setupError", function (event) {
+                  console.error("خطأ في إعداد المشغل:", event.message);
+                  showError("حدث خطأ في إعداد المشغل: " + event.message);
+               });
+
+               playerInstance.on("ready", function () {
+                  console.log("تم تحميل المشغل بنجاح!");
+                  document.getElementById("loading-message").style.display = "none";
+               });
+
+               playerInstance.on("error", function (event) {
+                  console.error("حدث خطأ في المشغل:", event.message);
+                  showError("حدث خطأ في التشغيل: " + event.message);
+               });
+            } catch (e) {
+               console.error("خطأ في إعداد المشغل:", e);
+               showError(e.message);
+            }
+         }
+
+         // عرض رسالة الخطأ
+         function showError(message) {
+            document.getElementById("player").innerHTML = `
+               <div id="error-message" style="color:red;text-align:center;padding-top:50px">
+                  ${message}<br><br>
+                  <button onclick="window.location.reload()" style="padding:10px 20px;background:#ff4444;color:white;border:none;border-radius:5px;cursor:pointer">
+                     إعادة المحاولة
+                  </button>
+               </div>
+            `;
+         }
+
+         // تنفيذ العملية الرئيسية
+         async function initializePlayer() {
+            try {
+               // عرض رسالة تحميل
+               document.getElementById("player").innerHTML = `
+                  <div id="loading-message" style="color:white;text-align:center;padding-top:50px">
+                     جاري تحميل بيانات القناة...
+                     <div style="margin-top:20px;font-size:14px;color:#ccc" id="progress-message"></div>
+                  </div>
+               `;
+               
+               // تحديث حالة التحميل
+               document.getElementById("progress-message").textContent = "جاري جلب رابط البث...";
+               streamUrl = await fetchStreamUrl();
+               console.log("رابط البث:", streamUrl);
+               
+               document.getElementById("progress-message").textContent = "جاري جلب مفاتيح التشفير...";
+               drmKeys = await fetchDrmKeys();
+               console.log("مفاتيح DRM:", drmKeys);
+               
+               document.getElementById("progress-message").textContent = "جاري إعداد المشغل...";
+               
+               // إعداد المشغل بعد جلب البيانات
+               setupJWPlayer();
+            } catch (error) {
+               console.error("خطأ في التهيئة:", error);
+               showError("حدث خطأ: " + error);
+            }
+         }
+
+         // بدء تشغيل المشغل
+         initializePlayer();
+      });
+   </script>
+
+   <style>
+      * { margin: 0; padding: 0; outline: none; }
+      body, html { width: 100%; height: 100%; overflow: hidden; background-color: black; }
+      #player { width: 100%!important; height: 100%!important; }
+   </style>
 </head>
 <body>
-  <button id="resizeButton">
-    <i class="fas fa-compress"></i>
-  </button>
-  <div id="my-jwplayer"></div>
-  
-  <!-- إشعار تليجرام -->
-  <div id="telegramNotification" onclick="window.open('https://t.me/yallakoora24', '_blank');">
-    <i class="fab fa-telegram-plane"></i>
-    اشترك في قناة التليجرام  
-  </div>
-  
-  <script>
-    async function fetchStreamUrl(url, selector) {
-      try {
-        const response = await fetch(url);
-        if (selector === 'json') {
-          const data = await response.json();
-          return data.stream_url; // استخراج رابط البث من الـ JSON
-        } else {
-          const text = await response.text();
-          const match = text.match(new RegExp(`${selector}\\s*["']([^"']+)["']`));
-          return match ? match[1] : null;
-        }
-      } catch (error) {
-        console.error('فشل في جلب رابط البث:', error);
-        return null;
-      }
-    }
-
-    async function setupPlayer() {
-      const urls = [
-        { url: 'https://mejarserver.site/bein1.php', selector: 'file:' },
-        { url: 'https://get.bassamnetflix2.workers.dev/TOD/WEB/BEIN/api.php?id=1', selector: 'json' },
-        { url: 'https://akomov.com/tod/todapp.php?id=1', selector: 'file:' }
-      ];
-
-      let loaded = false;
-
-      for (let i = 0; i < urls.length; i++) {
-        const { url, selector } = urls[i];
-        const streamUrl = await fetchStreamUrl(url, selector);
-
-        if (streamUrl) {
-          try {
-            jwplayer("my-jwplayer").setup({
-              file: streamUrl, // استخدام رابط البث الذي تم جلبها
-              width: "100%",
-              height: "100%",
-              autostart: true,
-              drm: {
-                clearkey: {
-                  keyId: "39471a4508f1387d96867b6e8ffa1e39",
-                  key: "ddd1fa7cd620953469679dca5bc19e54"
-                }
-              },
-              skin: {
-                name: "seven",
-                active: "#cc0202",
-                inactive: "#7f8c8d",
-                background: "#1e1e1e"
-              }
-            });
-
-            console.log(`تم تحميل الفيديو بنجاح من الرابط ${i + 1}`);
-            loaded = true;
-            break; // توقف إذا تم تحميل الفيديو بنجاح
-          } catch (error) {
-            console.error(`فشل تحميل الفيديو من الرابط ${i + 1}:`, error);
-          }
-        }
-      }
-
-      if (!loaded) {
-        console.error('لم يتم العثور على رابط بث صالح.');
-      }
-    }
-
-    window.onload = function() {
-      setupPlayer();
-      const videoElement = document.querySelector('.jwplayer .jw-media video');
-      if (videoElement) {
-        videoElement.style.objectFit = 'fit';
-      }
-    };
-
-    let isZoomed = false;
-    document.getElementById('resizeButton').addEventListener('click', function() {
-      const videoElement = document.querySelector('.jwplayer .jw-media video');
-      if (videoElement) {
-        if (!isZoomed) {
-          videoElement.style.objectFit = 'contain';
-          document.querySelector('#resizeButton i').className = 'fas fa-expand';
-        } else {
-          videoElement.style.objectFit = 'fit';
-          document.querySelector('#resizeButton i').className = 'fas fa-compress';
-        }
-        isZoomed = !isZoomed;
-      }
-    });
-  </script>
+   <div id="player"></div>
 </body>
 </html>
