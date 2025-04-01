@@ -1,239 +1,304 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-   <meta charset="UTF-8">
-   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-   <title>Alwazir TV</title>
-   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
-   <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.1/shaka-player.compiled.js"></script>
-   <script src="//content.jwplatform.com/libraries/SAHhwvZq.js"></script>
-   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
-
-   <script>
-      document.addEventListener("DOMContentLoaded", function () {
-         jwplayer.key = 'ITWMv7t88JGzI0xPwW8I0+LveiXX9SWbfdmt0ArUSyc=';
-         const channelId = "spo-hd-13";
-         let streamUrl = "";
-         let drmKeys = {};
-
-         // جلب رابط البث من الصفحة المحددة
-         function fetchStreamUrl() {
-            return new Promise((resolve, reject) => {
-               $.ajax({
-                  url: `https://ibn-alsarma.live/ma/tdn.php?channel=${channelId}`,
-                  type: "GET",
-                  dataType: "text",
-                  success: function(data) {
-                     try {
-                        // استخراج الرابط باستخدام تعبير منتظم أكثر دقة
-                        const urlMatch = data.match(/https:\/\/todtv-live-spo-prod\.akamaized\.net\/Content\/Channel\/svc-[^'"]+/);
-                        if (urlMatch && urlMatch[0]) {
-                           // إصلاح الرابط إذا كان ناقصاً
-                           let fullUrl = urlMatch[0];
-                           if (!fullUrl.includes('playlist.mpd')) {
-                              fullUrl = fullUrl.replace(/\/DASH\/[^?]*/, '/DASH/playlist.mpd');
-                           }
-                           // إضافة المعلمات إذا كانت ناقصة
-                           if (!fullUrl.includes('start=')) {
-                              const timestamp = Math.floor(Date.now() / 1000);
-                              fullUrl += `?start=${timestamp}000&end=${timestamp + 7200}000`;
-                           }
-                           // التحقق من صحة الرابط النهائي
-                           if (!isValidUrl(fullUrl)) {
-                              throw new Error("رابط البث غير صالح");
-                           }
-                           streamUrl = fullUrl;
-                           resolve(streamUrl);
-                        } else {
-                           throw new Error("لم يتم العثور على رابط البث في الصفحة");
-                        }
-                     } catch (e) {
-                        reject(e.message);
-                     }
-                  },
-                  error: function(xhr, status, error) {
-                     reject("خطأ في جلب رابط البث: " + error);
-                  }
-               });
-            });
-         }
-
-         // دالة للتحقق من صحة الرابط
-         function isValidUrl(url) {
-            try {
-               new URL(url);
-               return url.includes('playlist.mpd') && 
-                      url.includes('akamaized.net') && 
-                      url.includes('svc-'+channelId);
-            } catch {
-               return false;
-            }
-         }
-
-         // جلب مفاتيح DRM من ملف chkeys.php
-         function fetchDrmKeys() {
-            return new Promise((resolve, reject) => {
-               $.ajax({
-                  url: "https://ibn-alsarma.live/ma/chkeys.php",
-                  type: "GET",
-                  dataType: "json",
-                  success: function(data) {
-                     try {
-                        if (data.channels && data.channels.length > 0) {
-                           // تصفية المفاتيح الخاصة بالقناة المطلوبة
-                           const channelKeys = data.channels.filter(
-                              ch => ch.id.includes(channelId) || ch.tv_name.includes(channelId)
-                           );
-                           
-                           if (channelKeys.length > 0) {
-                              // إنشاء كائن مفاتيح DRM بالشكل المطلوب
-                              drmKeys = {};
-                              channelKeys.forEach((keyObj, index) => {
-                                 const [keyId, key] = keyObj.key.split(":");
-                                 if (keyId && key) {
-                                    drmKeys[keyId] = key;
-                                 }
-                              });
-                              
-                              if (Object.keys(drmKeys).length > 0) {
-                                 resolve(drmKeys);
-                              } else {
-                                 throw new Error("المفاتيح غير صالحة");
-                              }
-                           } else {
-                              throw new Error("لا توجد مفاتيح لهذه القناة");
-                           }
-                        } else {
-                           throw new Error("بيانات المفاتيح غير صالحة");
-                        }
-                     } catch (e) {
-                        reject(e.message);
-                     }
-                  },
-                  error: function(xhr, status, error) {
-                     reject("خطأ في جلب مفاتيح DRM: " + error);
-                  }
-               });
-            });
-         }
-
-         // إعداد مشغل JWPlayer
-         function setupJWPlayer() {
-            try {
-               var playerInstance = jwplayer("player");
-               
-               // التحقق من وجود البيانات المطلوبة
-               if (!streamUrl || !drmKeys || Object.keys(drmKeys).length === 0) {
-                  throw new Error("بيانات التشغيل غير كاملة");
-               }
-               
-               playerInstance.setup({
-                  width: "100%",
-                  height: "100%",
-                  controls: true,
-                  stretching: "uniform",
-                  autostart: true,
-                  mute: false,
-                  volume: 50,
-                  horizontalVolumeSlider: true,
-                  playbackRateControls: true, 
-                  playbackRates: [0.5, 1, 1.25, 1.5, 2],
-                  logo: {
-                     file: "https://i.postimg.cc/YCcXxBWS/logo2.png",
-                     link: "https://t.me/alwazirtv",
-                     hide: false,
-                     position: "bottom-left",
-                     margin: 20
-                  },
-                  aspectratio: "16:9",
-                  playlist: [{
-                     sources: [{
-                        file: streamUrl,
-                        type: "dash",
-                        drm: {
-                           clearkey: {
-                              keys: drmKeys
-                           }
-                        },
-                        label: "HD"
-                     }]
-                  }]
-               });
-
-               playerInstance.on("setupError", function (event) {
-                  console.error("خطأ في إعداد المشغل:", event.message);
-                  showError("حدث خطأ في إعداد المشغل: " + event.message);
-               });
-
-               playerInstance.on("ready", function () {
-                  console.log("تم تحميل المشغل بنجاح!");
-                  document.getElementById("loading-message").style.display = "none";
-               });
-
-               playerInstance.on("error", function (event) {
-                  console.error("حدث خطأ في المشغل:", event.message);
-                  showError("حدث خطأ في التشغيل: " + event.message);
-               });
-            } catch (e) {
-               console.error("خطأ في إعداد المشغل:", e);
-               showError(e.message);
-            }
-         }
-
-         // عرض رسالة الخطأ
-         function showError(message) {
-            document.getElementById("player").innerHTML = `
-               <div id="error-message" style="color:red;text-align:center;padding-top:50px">
-                  ${message}<br><br>
-                  <button onclick="window.location.reload()" style="padding:10px 20px;background:#ff4444;color:white;border:none;border-radius:5px;cursor:pointer">
-                     إعادة المحاولة
-                  </button>
-               </div>
-            `;
-         }
-
-         // تنفيذ العملية الرئيسية
-         async function initializePlayer() {
-            try {
-               // عرض رسالة تحميل
-               document.getElementById("player").innerHTML = `
-                  <div id="loading-message" style="color:white;text-align:center;padding-top:50px">
-                     جاري تحميل بيانات القناة...
-                     <div style="margin-top:20px;font-size:14px;color:#ccc" id="progress-message"></div>
-                  </div>
-               `;
-               
-               // تحديث حالة التحميل
-               document.getElementById("progress-message").textContent = "جاري جلب رابط البث...";
-               streamUrl = await fetchStreamUrl();
-               console.log("رابط البث:", streamUrl);
-               
-               document.getElementById("progress-message").textContent = "جاري جلب مفاتيح التشفير...";
-               drmKeys = await fetchDrmKeys();
-               console.log("مفاتيح DRM:", drmKeys);
-               
-               document.getElementById("progress-message").textContent = "جاري إعداد المشغل...";
-               
-               // إعداد المشغل بعد جلب البيانات
-               setupJWPlayer();
-            } catch (error) {
-               console.error("خطأ في التهيئة:", error);
-               showError("حدث خطأ: " + error);
-            }
-         }
-
-         // بدء تشغيل المشغل
-         initializePlayer();
-      });
-   </script>
-
-   <style>
-      * { margin: 0; padding: 0; outline: none; }
-      body, html { width: 100%; height: 100%; overflow: hidden; background-color: black; }
-      #player { width: 100%!important; height: 100%!important; }
-   </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alwazir TV Player</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+    <script src="//content.jwplatform.com/libraries/SAHhwvZq.js"></script>
+    <style>
+        * { margin: 0; padding: 0; outline: none; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #111; font-family: Arial, sans-serif; }
+        #player-container { width: 100%; height: 100%; position: relative; }
+        #player { width: 100%; height: 100%; background: #000; }
+        #status-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 10px;
+            max-width: 90%;
+        }
+        #retry-btn {
+            margin-top: 15px;
+            padding: 8px 20px;
+            background: #e50914;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #e50914;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
-   <div id="player"></div>
+    <div id="player-container">
+        <div id="player"></div>
+        <div id="status-message">
+            <div id="message-text">جاري تهيئة المشغل...</div>
+            <div id="progress-details" style="font-size:12px;color:#aaa;margin-top:5px;"></div>
+            <div class="loader" id="loader"></div>
+            <button id="retry-btn" style="display:none;">إعادة المحاولة</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            jwplayer.key = 'ITWMv7t88JGzI0xPwW8I0+LveiXX9SWbfdmt0ArUSyc=';
+            const channelId = "spo-hd-13";
+            let streamUrl = "";
+            let drmKeys = {};
+            let retryCount = 0;
+            const maxRetries = 3;
+
+            // عناصر واجهة المستخدم
+            const statusMessage = document.getElementById("status-message");
+            const messageText = document.getElementById("message-text");
+            const progressDetails = document.getElementById("progress-details");
+            const loader = document.getElementById("loader");
+            const retryBtn = document.getElementById("retry-btn");
+
+            // تحديث حالة التحميل
+            function updateStatus(message, detail = "") {
+                messageText.textContent = message;
+                progressDetails.textContent = detail;
+                console.log(message + (detail ? " - " + detail : ""));
+            }
+
+            // عرض خطأ مع إمكانية إعادة المحاولة
+            function showError(error) {
+                updateStatus("حدث خطأ:", error);
+                loader.style.display = "none";
+                retryBtn.style.display = "block";
+                retryBtn.onclick = retryInitialization;
+            }
+
+            // جلب محتوى الصفحة عبر CORS proxy
+            async function fetchPageContent(url) {
+                try {
+                    // استخدام proxy لتجاوز CORS
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                    const response = await fetch(proxyUrl);
+                    const data = await response.json();
+                    return data.contents;
+                } catch (error) {
+                    throw new Error(`فشل في جلب المحتوى: ${error.message}`);
+                }
+            }
+
+            // جلب رابط البث من الصفحة
+            async function fetchStreamUrl() {
+                updateStatus("جاري جلب رابط البث...", "الاتصال بالسيرفر");
+                try {
+                    const url = `https://ibn-alsarma.live/ma/tdn.php?channel=${channelId}`;
+                    const pageContent = await fetchPageContent(url);
+                    
+                    // استخراج الرابط باستخدام تعبير منتظم دقيق
+                    const urlMatch = pageContent.match(/https:\/\/todtv-live-spo-prod\.akamaized\.net\/Content\/Channel\/svc-[^'"]+/);
+                    if (urlMatch && urlMatch[0]) {
+                        let fullUrl = urlMatch[0];
+                        
+                        // إصلاح الرابط إذا كان ناقصاً
+                        if (!fullUrl.includes('playlist.mpd')) {
+                            fullUrl = fullUrl.replace(/\/DASH\/[^?]*/, '/DASH/playlist.mpd');
+                        }
+                        
+                        // إضافة المعلمات إذا كانت ناقصة
+                        if (!fullUrl.includes('start=')) {
+                            const timestamp = Math.floor(Date.now() / 1000);
+                            fullUrl += `?start=${timestamp}000&end=${timestamp + 7200}000`;
+                        }
+                        
+                        // التحقق من صحة الرابط
+                        if (!isValidStreamUrl(fullUrl)) {
+                            throw new Error("رابط البث غير صالح");
+                        }
+                        
+                        streamUrl = fullUrl;
+                        updateStatus("تم جلب رابط البث", "جاري التحقق...");
+                        return streamUrl;
+                    } else {
+                        throw new Error("لم يتم العثور على رابط البث في الصفحة");
+                    }
+                } catch (error) {
+                    throw new Error(`فشل في جلب رابط البث: ${error.message}`);
+                }
+            }
+
+            // جلب مفاتيح التشفير من الصفحة
+            async function fetchDrmKeys() {
+                updateStatus("جاري جلب مفاتيح التشفير...", "الاتصال بالسيرفر");
+                try {
+                    const url = "https://ibn-alsarma.live/ma/chkeys.php";
+                    const pageContent = await fetchPageContent(url);
+                    
+                    // محاولة تحليل المحتوى كـ JSON أولاً
+                    try {
+                        const jsonData = JSON.parse(pageContent);
+                        if (jsonData.channels && jsonData.channels.length > 0) {
+                            return processKeys(jsonData.channels);
+                        }
+                    } catch (e) {
+                        console.log("المحتوى ليس JSON، جرب التحليل كـ HTML");
+                    }
+                    
+                    // إذا فشل التحليل كـ JSON، جرب استخراج المفاتيح من HTML
+                    const keyMatches = pageContent.match(/"key":\s*"([^"]+)"/g);
+                    if (keyMatches && keyMatches.length > 0) {
+                        const keys = keyMatches.map(match => {
+                            const keyStr = match.match(/"key":\s*"([^"]+)"/)[1];
+                            return { key: keyStr };
+                        });
+                        return processKeys(keys);
+                    }
+                    
+                    throw new Error("لم يتم العثور على مفاتيح في الصفحة");
+                    
+                } catch (error) {
+                    throw new Error(`فشل في جلب المفاتيح: ${error.message}`);
+                }
+            }
+
+            // معالجة المفاتيح المستخرجة
+            function processKeys(keysArray) {
+                drmKeys = {};
+                keysArray.forEach((keyObj, index) => {
+                    if (keyObj.key) {
+                        const [keyId, key] = keyObj.key.split(":");
+                        if (keyId && key) {
+                            drmKeys[keyId] = key;
+                        }
+                    }
+                });
+                
+                if (Object.keys(drmKeys).length > 0) {
+                    updateStatus("تم جلب مفاتيح التشفير", `تم العثور على ${Object.keys(drmKeys).length} مفتاح`);
+                    return drmKeys;
+                } else {
+                    throw new Error("المفاتيح غير صالحة");
+                }
+            }
+
+            // التحقق من صحة رابط البث
+            function isValidStreamUrl(url) {
+                try {
+                    new URL(url);
+                    return url.includes('playlist.mpd') && 
+                           url.includes('akamaized.net') && 
+                           url.includes('svc-'+channelId);
+                } catch {
+                    return false;
+                }
+            }
+
+            // إعداد مشغل JWPlayer
+            function setupJWPlayer() {
+                updateStatus("جاري إعداد المشغل...", "التحضير للتشغيل");
+                try {
+                    // التحقق من وجود البيانات المطلوبة
+                    if (!streamUrl || !drmKeys || Object.keys(drmKeys).length === 0) {
+                        throw new Error("بيانات التشغيل غير كاملة");
+                    }
+                    
+                    const playerInstance = jwplayer("player").setup({
+                        width: "100%",
+                        height: "100%",
+                        controls: true,
+                        stretching: "uniform",
+                        autostart: true,
+                        mute: false,
+                        volume: 50,
+                        horizontalVolumeSlider: true,
+                        playbackRateControls: true,
+                        playbackRates: [0.5, 1, 1.25, 1.5, 2],
+                        logo: {
+                            file: "https://i.postimg.cc/YCcXxBWS/logo2.png",
+                            link: "https://t.me/alwazirtv",
+                            hide: false,
+                            position: "bottom-left",
+                            margin: 20
+                        },
+                        aspectratio: "16:9",
+                        playlist: [{
+                            sources: [{
+                                file: streamUrl,
+                                type: "dash",
+                                drm: {
+                                    clearkey: {
+                                        keys: drmKeys
+                                    }
+                                },
+                                label: "HD"
+                            }]
+                        }]
+                    });
+
+                    playerInstance.on("ready", function() {
+                        updateStatus("جاري تشغيل القناة...");
+                        setTimeout(() => {
+                            statusMessage.style.display = "none";
+                        }, 2000);
+                    });
+
+                    playerInstance.on("error", function(event) {
+                        showError(`خطأ في المشغل: ${event.message}`);
+                    });
+
+                    playerInstance.on("setupError", function(event) {
+                        showError(`خطأ في الإعداد: ${event.message}`);
+                    });
+                } catch (error) {
+                    showError(error.message);
+                }
+            }
+
+            // إعادة المحاولة
+            function retryInitialization() {
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    updateStatus(`إعادة المحاولة (${retryCount}/${maxRetries})...`);
+                    retryBtn.style.display = "none";
+                    loader.style.display = "block";
+                    initializePlayer();
+                } else {
+                    showError("وصلت إلى الحد الأقصى لمحاولات إعادة التشغيل");
+                }
+            }
+
+            // العملية الرئيسية
+            async function initializePlayer() {
+                try {
+                    // جلب البيانات
+                    await fetchStreamUrl();
+                    await fetchDrmKeys();
+                    
+                    // إعداد المشغل
+                    setupJWPlayer();
+                } catch (error) {
+                    showError(error.message);
+                }
+            }
+
+            // بدء التشغيل
+            initializePlayer();
+        });
+    </script>
 </body>
 </html>
